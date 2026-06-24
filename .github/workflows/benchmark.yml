@@ -81,17 +81,32 @@ jobs:
           chmod +x ./bin/quickjs
           ./bin/quickjs data/bench/bench-v8/combined.js > data/bench/quickjs_results.txt
 
+      # Same esvu breakage as QuickJS: its d8 post-install check (`print("42")`)
+      # fails on current V8 canary builds. Resolve latest and download d8 + its
+      # snapshot/icu assets directly; the benchmark uses console.log, not print.
       - name: Benchmarking V8 --jitless
         continue-on-error: true
         run: |
-          esvu install v8
-          ./bin/v8 --jitless data/bench/bench-v8/combined.js > data/bench/v8-jitless_results.txt
+          mkdir -p ./v8
+          version=$(curl -fsSL https://storage.googleapis.com/chromium-v8/official/canary/v8-linux64-rel-latest.json | jq -r .version)
+          echo "Latest V8: $version"
+          wget -qO /tmp/v8.zip "https://storage.googleapis.com/chromium-v8/official/canary/v8-linux64-rel-$version.zip"
+          unzip -oj /tmp/v8.zip d8 icudtl.dat snapshot_blob.bin -d ./v8
+          chmod +x ./v8/d8
+          ./v8/d8 --snapshot_blob=./v8/snapshot_blob.bin --jitless data/bench/bench-v8/combined.js > data/bench/v8-jitless_results.txt
 
+      # Same esvu breakage: download the jsshell build directly and run it with
+      # its bundled shared libs on LD_LIBRARY_PATH.
       - name: Benchmarking SpiderMonkey --jitless
         continue-on-error: true
         run: |
-          esvu install jsshell
-          ./bin/sm --no-jit-backend data/bench/bench-v8/combined.js > data/bench/sm-jitless_results.txt
+          mkdir -p ./sm
+          version=$(curl -fsSL https://product-details.mozilla.org/1.0/firefox_history_development_releases.json | jq -r 'to_entries | sort_by(.value) | last | .key')
+          echo "Latest SpiderMonkey: $version"
+          wget -qO /tmp/sm.zip "https://archive.mozilla.org/pub/firefox/releases/$version/jsshell/jsshell-linux-x86_64.zip"
+          unzip -oj /tmp/sm.zip -d ./sm
+          chmod +x ./sm/js
+          LD_LIBRARY_PATH=./sm ./sm/js --no-jit-backend data/bench/bench-v8/combined.js > data/bench/sm-jitless_results.txt
 
       - name: Benchmarking Kiesel
         continue-on-error: true
