@@ -62,14 +62,20 @@ jobs:
           make -f Makefile.cmdline
           ./duk ../data/bench/bench-v8/combined.js > ../data/bench/duktape_results.txt
 
-      # esvu installs QuickJS "latest"; esvu 1.3.0 fails to install the 2026-06-04
-      # release ("Some engines were not installed"), which aborted the whole
-      # nightly. Pin a known-good binary via direct download, like duktape/kiesel.
+      # Track the latest QuickJS, but download it directly rather than via
+      # `esvu install quickjs`: esvu's post-install check runs
+      # `qjs -e 'print("42")'`, and the built-in `print` changed in the 2026-06-04
+      # build, so esvu aborts ("Some engines were not installed"). The benchmark
+      # doesn't use the built-in print (combined.js does `var print = console.log`),
+      # so the binary runs fine when invoked directly. continue-on-error keeps a
+      # future incompatibility from blanking the page.
       - name: Benchmarking quickJS
         continue-on-error: true
         run: |
           mkdir -p ./bin
-          wget -qO /tmp/quickjs.zip "https://bellard.org/quickjs/binary_releases/quickjs-linux-x86_64-2025-09-13.zip"
+          version=$(curl -fsSL https://bellard.org/quickjs/binary_releases/LATEST.json | jq -r .version)
+          echo "Latest QuickJS: $version"
+          wget -qO /tmp/quickjs.zip "https://bellard.org/quickjs/binary_releases/quickjs-linux-x86_64-$version.zip"
           unzip -oj /tmp/quickjs.zip qjs -d ./bin
           mv ./bin/qjs ./bin/quickjs
           chmod +x ./bin/quickjs
