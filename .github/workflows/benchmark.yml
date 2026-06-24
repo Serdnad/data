@@ -29,6 +29,15 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
+      # `-C target-cpu=native` bakes host-specific instructions into compiled
+      # artifacts, including the proc-macros that run at build time. GitHub's
+      # runner pool is a mix of CPU models, so a cache built on one microarch and
+      # restored onto another crashes rustc with SIGILL. Key the cache by CPU
+      # model so artifacts are only ever restored onto the microarch that built
+      # them.
+      - name: Detect CPU model
+        id: cpu
+        run: echo "id=$(grep -m1 'model name' /proc/cpuinfo | sha256sum | cut -c1-16)" >> "$GITHUB_OUTPUT"
       - name: Cache cargo
         uses: actions/cache@v4
         with:
@@ -36,7 +45,7 @@ jobs:
             boa/target
             ~/.cargo/git
             ~/.cargo/registry
-          key: ${{ runner.os }}-cargo-benchmarks-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-${{ steps.cpu.outputs.id }}-cargo-benchmarks-${{ hashFiles('**/Cargo.lock') }}
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
@@ -45,6 +54,7 @@ jobs:
           npm i -g esvu
 
       - name: Benchmarking duktape
+        continue-on-error: true
         run: |
           wget https://github.com/svaarala/duktape/releases/download/v2.7.0/duktape-2.7.0.tar.xz
           tar xvfJ duktape-2.7.0.tar.xz
@@ -52,22 +62,33 @@ jobs:
           make -f Makefile.cmdline
           ./duk ../data/bench/bench-v8/combined.js > ../data/bench/duktape_results.txt
 
+      # esvu installs QuickJS "latest"; esvu 1.3.0 fails to install the 2026-06-04
+      # release ("Some engines were not installed"), which aborted the whole
+      # nightly. Pin a known-good binary via direct download, like duktape/kiesel.
       - name: Benchmarking quickJS
+        continue-on-error: true
         run: |
-          esvu install quickjs
+          mkdir -p ./bin
+          wget -qO /tmp/quickjs.zip "https://bellard.org/quickjs/binary_releases/quickjs-linux-x86_64-2025-09-13.zip"
+          unzip -oj /tmp/quickjs.zip qjs -d ./bin
+          mv ./bin/qjs ./bin/quickjs
+          chmod +x ./bin/quickjs
           ./bin/quickjs data/bench/bench-v8/combined.js > data/bench/quickjs_results.txt
 
       - name: Benchmarking V8 --jitless
+        continue-on-error: true
         run: |
           esvu install v8
           ./bin/v8 --jitless data/bench/bench-v8/combined.js > data/bench/v8-jitless_results.txt
 
       - name: Benchmarking SpiderMonkey --jitless
+        continue-on-error: true
         run: |
           esvu install jsshell
           ./bin/sm --no-jit-backend data/bench/bench-v8/combined.js > data/bench/sm-jitless_results.txt
 
       - name: Benchmarking Kiesel
+        continue-on-error: true
         run: |
           wget -O ./bin/kiesel "https://files.kiesel.dev/kiesel-linux-$(uname -m)-releasefast"
           chmod +x ./bin/kiesel
