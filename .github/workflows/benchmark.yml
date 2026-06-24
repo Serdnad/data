@@ -16,11 +16,11 @@ jobs:
       RUSTFLAGS: "-C target-cpu=native"
     steps:
       - name: Checkout the data repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           path: data
       - name: Checkout the main Boa repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: boa-dev/boa
           ref: main
@@ -39,14 +39,14 @@ jobs:
         id: cpu
         run: echo "id=$(grep -m1 'model name' /proc/cpuinfo | sha256sum | cut -c1-16)" >> "$GITHUB_OUTPUT"
       - name: Cache cargo
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             boa/target
             ~/.cargo/git
             ~/.cargo/registry
           key: ${{ runner.os }}-${{ steps.cpu.outputs.id }}-cargo-benchmarks-${{ hashFiles('**/Cargo.lock') }}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: "24"
       - name: Install esvu
@@ -142,7 +142,7 @@ jobs:
           git add bench/results
           git commit -m "Add new benchmark results" -a
       - name: Push changes
-        uses: ad-m/github-push-action@master
+        uses: ad-m/github-push-action@v1.3.0
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           branch: ${{ github.ref }}
